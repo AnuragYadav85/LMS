@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2> Welcome to Admin Dashboard - {{ session.get("designation") }}. {{ session.get("user_name") }} {{ session.get("surname") }}</h2>
+<hr>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <a href="/add_employee_page" class="btn btn-success w-100">Add Employee</a>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <a href="/approve_leave_page" class="btn btn-warning w-100">Approve Leaves</a>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <a href="/applyleave_page" class="btn btn-success w-100">Apply Leave</a>
+    </div>
+    <div class="col-md-4 mb-3">
+        <a href="/leavehistory_page" class="btn btn-secondary w-100">View Leave History</a>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <a href="/add_leave_balance_page" class="btn btn-info w-100">Add Leave Balance</a>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <a href="/download_all_reports" class="btn btn-outline-success w-100">
+            Download All Employees Report (Monthly)
+        </a>
+    </div>
+</div>
+
+{% endblock %}

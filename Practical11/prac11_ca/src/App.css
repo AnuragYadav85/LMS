@@ -1,0 +1,239 @@
+/* ================= GLOBAL STYLES ================= */
+body {
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8fafc;
+  color: #1f2937;
+  margin: 0;
+  padding: 0;
+}
+
+h1, h2, h3, h4 {
+  color: #111827;
+  margin: 0;
+}
+
+.container {
+  max-width: 1200px;
+  margin: auto;
+  padding: 20px;
+}
+
+/* ================= LINKS ================= */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+a:hover {
+  color: #3b82f6;
+  transition: all 0.3s;
+}
+
+/* ================= BUTTONS ================= */
+button,
+.btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+button:hover,
+.btn:hover {
+  transform: translateY(-2px);
+  opacity: 0.9;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Primary & outline */
+.btn-primary,
+button.primary {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.btn-outline {
+  border: 2px solid #3b82f6;
+  background: transparent;
+  color: #3b82f6;
+}
+
+/* ================= FORMS ================= */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+input, select, textarea {
+  padding: 12px 15px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 15px;
+  transition: all 0.3s;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+  outline: none;
+}
+
+/* Labels */
+label {
+  font-weight: 500;
+}
+
+/* ================= CARDS ================= */
+.card,
+.client-card,
+.service-card {
+  background-color: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  transition: all 0.3s;
+  margin-bottom: 20px;
+}
+
+.card:hover,
+.client-card:hover,
+.service-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+.client-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.client-logo {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+/* ================= HERO / HOME ================= */
+.hero {
+  text-align: center;
+  padding: 100px 20px;
+  background: linear-gradient(to right, #f0f9ff, #e0f2fe);
+}
+
+.hero h1 {
+  font-size: 3rem;
+  margin-bottom: 20px;
+  font-weight: 700;
+}
+
+.hero p {
+  font-size: 1.2rem;
+  color: #64748b;
+  max-width: 700px;
+  margin: auto;
+}
+
+.hero .btn {
+  margin-top: 20px;
+}
+
+/* Service Cards Grid */
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+  padding: 40px 0;
+}
+
+.service-card svg {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 15px;
+  color: #3b82f6;
+}
+
+/* ================= LOGIN & FORM PAGES ================= */
+.login-form,
+.form-box {
+  max-width: 450px;
+  margin: 60px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+
+.login-form h2,
+.form-box h2 {
+  margin-bottom: 20px;
+  text-align: center;
+  font-size: 1.8rem;
+}
+
+/* ================= ADMIN DASHBOARD ================= */
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.admin-actions button,
+.admin-actions .btn {
+  flex: 1 1 200px;
+}
+
+/* ================= CAREERS PAGE ================= */
+ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+ul li {
+  background: white;
+  padding: 15px 20px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* ================= ADMIN APPLICATIONS ================= */
+.admin-actions button.accept {
+  background: #22c55e;
+  color: white;
+}
+
+.admin-actions button.reject {
+  background: #ef4444;
+  color: white;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 768px) {
+  .admin-actions {
+    flex-direction: column;
+  }
+
+  .client-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero h1 {
+    font-size: 2.2rem;
+  }
+
+  .hero p {
+    font-size: 1rem;
+  }
+}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Welcome to Employee Dashboard - {{ session.get("designation") }}. {{ session.get("user_name") }} {{ session.get("surname") }}</h2>
+<hr>
+
+<div class="row text-center">
+    <div class="col-md-3 mb-3">
+        <div class="card shadow p-3">
+            <h5>SL</h5>
+            <h3>{{ balance[0] }}</h3>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow p-3">
+            <h5>CL</h5>
+            <h3>{{ balance[1] }}</h3>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow p-3">
+            <h5>COFF</h5>
+            <h3>{{ balance[2] }}</h3>
+        </div>
+    </div>
+
+    <div class="col-md-3 mb-3">
+        <div class="card shadow p-3">
+            <h5>SV</h5>
+            <h3>{{ balance[3] }}</h3>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-4 mb-3">
+        <a href="/applyleave_page" class="btn btn-success w-100">Apply Leave</a>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <a href="/leavehistory_page" class="btn btn-secondary w-100">Leave History</a>
+    </div>
+</div>
+
+{% endblock %}

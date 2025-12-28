@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Add Employee</h2>
+<hr>
+
+<form method="post" action="/add_employee">
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label>Email</label>
+        <input type="email" name="email" class="form-control" placeholder="Email" required>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-1 mb-1">
+        <label>Designation</label>
+        <select name="designation" class="form-control" required>
+            <option value="MR">MR</option>
+            <option value="MS">MS</option>
+            <option value="MRS">MRS</option>
+            <option value="DR">DR</option>
+        </select>
+    </div>
+
+    <div class="col-md-5 mb-3">
+        <label>Name</label>
+        <input type="text" name="name" class="form-control" placeholder="Name" required>
+    </div>
+
+    <div class="col-md-5 mb-3">
+        <label>Surname</label>
+        <input type="text" name="surname" class="form-control" placeholder="Surname" required>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4 mb-3">
+        <label>Department</label>
+        <select name="department" class="form-control select2" data-coreui-search="true">
+            <option value="MCA">MCA</option>
+            <option value="MMS">MMS</option>
+            <option value="PGDM">PGDM</option>
+            <option value="HR">HR</option>
+            <option value="Finance">Finance</option>
+            <option value="Library">Library</option>
+            <option value="IT">IT</option>
+        </select>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label>Position</label>
+        <select name="admin" class="form-control">
+            <option value="employee">Employee</option>
+            <option value="admin">Admin</option>
+        </select>
+    </div>
+
+    <div class="col-md-4 mb-3">
+        <label>Password</label>
+        <input type="password" name="pass" class="form-control" placeholder="Password" required>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3 mb-3">
+        <label>Date of Joining</label>
+        <input type="date" name="join_date" id="join_date" class="form-control">
+    </div>
+</div>
+
+    <div class="col-md-3 mb-3 d-flex align-items-end">
+        <button class="btn btn-success w-100">Add Employee</button>
+    </div>
+</div>
+
+</form>
+<script>
+    const joinDateInput = document.getElementById("join_date");
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${yyyy}-${mm}-${dd}`;
+    joinDateInput.setAttribute("max", todayStr);
+</script>
+
+{% if data %}
+<div class="alert alert-info mt-3">{{ data }}</div>
+{% endif %}
+
+{% endblock %}

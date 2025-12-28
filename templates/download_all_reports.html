@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3>Download All Employees Report</h3>
+<hr>
+
+<div class="card p-4 shadow">
+
+    <p>This report will include:</p>
+    <ul>
+        <li>All employee details</li>
+        <li>Leave remaining (SL, CL, COFF, SV)</li>
+        <li>Month-wise leave history</li>
+    </ul>
+
+    <a href="/download_all_reports" class="btn btn-success w-100">
+        Download CSV
+    </a>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3>Leave Approval Panel</h3>
+<hr>
+
+<table class="table table-bordered table-hover shadow">
+    <thead class="table-dark">
+        <tr>
+            <th>Email</th>
+            <th>Leave Type</th>
+            <th>Start</th>
+            <th>End</th>
+            <th>Applied On</th>
+            <th>Status</th>
+            <th>Action</th>
+            <th>Options</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for row in data %}
+        <tr>
+            <td>{{ row[0] }}</td>
+            <td>{{ row[1] }}</td>
+            <td>{{ row[2] }}</td>
+            <td>{{ row[3] }}</td>
+            <td>{{ row[4] }}</td>
+            <td>{{ row[5] }}</td>
+
+            <td>
+                {% if row[5] == "Approved" %}
+                    <span class="badge bg-success">Approved</span>
+                {% elif row[5] == "Rejected" %}
+                    <span class="badge bg-danger">Rejected</span>
+                {% else %}
+                    <span class="badge bg-warning">Pending</span>
+                {% endif %}
+            </td>
+
+            <td>
+                {% if row[5] == "Pending" %}
+                    <a href="/approve/{{ row[0] }}/{{ row[2] }}/{{ row[3] }}/{{ row[1] }}/{{ row[4] }}"
+                       class="btn btn-success btn-sm">Approve</a>
+
+                    <a href="/reject/{{ row[0] }}/{{ row[2] }}/{{ row[3] }}/{{ row[1] }}/{{ row[4] }}"
+                       class="btn btn-danger btn-sm">Reject</a>
+                {% else %}
+                    <span class="text-muted">No Action</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

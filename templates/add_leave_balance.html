@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h3>Add Leave Balance</h3>
+<hr>
+
+<form action="/add_leave_balance" method="POST" class="card p-4 shadow">
+
+    <label>Select Employee</label>
+    <select name="to_email" class="form-control mb-3" required>
+        {% for emp in employees %}
+            <option value="{{ emp[0] }}">{{ emp[0] }} ({{ emp[1] }} {{ emp[2] }})</option>
+        {% endfor %}
+    </select>
+
+    <label>Leave Type</label>
+        <select name="leave_type" class="form-control mb-3">
+            <option value="Sick_Leave">Sick Leave</option>
+            <option value="Casual_Leave">Casual Leave</option>
+            <option value="Conpenstaion_off">Compensation off</option>
+            {% if session.type == 'admin' %}
+                <option value="Summer_Vacation">Summer Vacation</option>
+            {% else %}
+                <option value="Planed_Leave">Plan Leave</option>
+            {% endif %}
+        </select>
+
+    <label>Number of Days</label>
+    <input type="number" name="days" class="form-control mb-3" min="1" required>
+    <button class="btn btn-success w-100">Add Leave</button>
+
+</form>
+{% if session.msg %}
+<div class="alert alert-info mt-3">
+    {{ session.msg }}
+</div>
+{% set _ = session.pop('msg') %}
+{% endif %}
+{% endblock %}

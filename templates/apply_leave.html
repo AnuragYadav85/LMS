@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Apply Leave</h4>
+    </div>
+
+    <div class="card-body">
+        <form method="post" action="/applyleave">
+
+            <div class="mb-3">
+                <label class="form-label">Start Date</label>
+                <input type="date" name="leave_start" class="form-control" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">End Date</label>
+                <input type="date" name="leave_end" class="form-control" required>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Leave Type</label>
+                <select name="leave_type" class="form-select" required>
+
+                    <option value="Sick_Leave">Sick Leave</option>
+                    <option value="Casual_Leave">Casual Leave</option>
+                    <option value="Compensation_off">Compensation off</option>
+                    <option value="Duty_Leave">Duty Leave</option>
+                    {% if session.type != 'admin' %}
+                        <option value="Summer_Vacation">Summer Vacation</option>
+                    {% endif %}
+                    {% if session.type != 'employee' %}
+                        <option value="Planed_Leave">Plan Leave</option>
+                    {% endif %}
+                    <option value="Early_Leave">Early Leave</option>
+
+                </select>
+            </div>
+
+            <div class="d-grid">
+                <button type="submit" class="btn btn-success">
+                    Apply Leave
+                </button>
+            </div>
+
+        </form>
+        <div class="text-center mt-4">
+        <a href="/dashboard_page" class="btn btn-secondary">Back to Dashboard</a>
+        </div>
+</div>
+{% if data %}
+<div class="alert alert-info mt-3">{{ data }}</div>
+{% endif %}
+{% endblock %}
