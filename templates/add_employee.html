@@ -8,14 +8,19 @@
 
 <div class="row">
     <div class="col-md-4 mb-3">
-        <label>Email</label>
+        <h6>Email</h6>
         <input type="email" name="email" class="form-control" placeholder="Email" required>
     </div>
+    
+    <div class="col-md-3 mb-3">
+        <h6>Password</h6>
+        <input type="password" name="pass" class="form-control" placeholder="Password" required>
+    </div>
 </div>
-
+<br>
 <div class="row">
     <div class="col-md-1 mb-1">
-        <label>Designation</label>
+        <h6>Designation</h6>
         <select name="designation" class="form-control" required>
             <option value="MR">MR</option>
             <option value="MS">MS</option>
@@ -23,21 +28,20 @@
             <option value="DR">DR</option>
         </select>
     </div>
-
-    <div class="col-md-5 mb-3">
-        <label>Name</label>
+    <div class="col-md-3 mb-3">
+        <h6>Name</h6>
         <input type="text" name="name" class="form-control" placeholder="Name" required>
     </div>
 
-    <div class="col-md-5 mb-3">
-        <label>Surname</label>
+    <div class="col-md-3 mb-3">
+        <h6>Surname</h6>
         <input type="text" name="surname" class="form-control" placeholder="Surname" required>
     </div>
 </div>
-
+<br>
 <div class="row">
-    <div class="col-md-4 mb-3">
-        <label>Department</label>
+    <div class="col-md-2 mb-2">
+        <h6>Department</h6>
         <select name="department" class="form-control select2" data-coreui-search="true">
             <option value="MCA">MCA</option>
             <option value="MMS">MMS</option>
@@ -49,33 +53,31 @@
         </select>
     </div>
 
-    <div class="col-md-4 mb-3">
-        <label>Position</label>
-        <select name="admin" class="form-control">
+    <div class="col-md-2 mb-2">
+        <h6>Position</h6>
+        <select name="admin" class="form-control select2" data-coreui-search="true">
             <option value="employee">Employee</option>
             <option value="admin">Admin</option>
         </select>
     </div>
 
-    <div class="col-md-4 mb-3">
-        <label>Password</label>
-        <input type="password" name="pass" class="form-control" placeholder="Password" required>
-    </div>
-</div>
-
-<div class="row">
     <div class="col-md-3 mb-3">
-        <label>Date of Joining</label>
+        <h6>Date of Joining</h6>
         <input type="date" name="join_date" id="join_date" class="form-control">
     </div>
 </div>
-
+<br>
+<div class="row">
     <div class="col-md-3 mb-3 d-flex align-items-end">
         <button class="btn btn-success w-100">Add Employee</button>
     </div>
 </div>
-
 </form>
+<div class="row mt-4">
+    <div class="col-md-3 mb-3 d-flex align-items-end">
+        <a href="/dashboard_page" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+</div>
 <script>
     const joinDateInput = document.getElementById("join_date");
     const today = new Date();

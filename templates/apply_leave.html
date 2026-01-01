@@ -7,22 +7,26 @@
     </div>
 
     <div class="card-body">
-        <form method="post" action="/applyleave">
+        <form method="post" action="/applyleave" id="leaveForm">
 
             <div class="mb-3">
                 <label class="form-label">Start Date</label>
-                <input type="date" name="leave_start" class="form-control" required>
+                <input type="date" id="leave_start" name="leave_start" class="form-control" required>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">End Date</label>
-                <input type="date" name="leave_end" class="form-control" required>
+                <input type="date" id="leave_end" name="leave_end" class="form-control" required>
+            </div>
+            <div id="dateError" class="text-danger mb-3" style="display:none;">
+                <h4>
+                    End date cannot be earlier than start date.
+                </h4>
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Leave Type</label>
                 <select name="leave_type" class="form-select" required>
-
                     <option value="Sick_Leave">Sick Leave</option>
                     <option value="Casual_Leave">Casual Leave</option>
                     <option value="Compensation_off">Compensation off</option>
@@ -34,22 +38,44 @@
                         <option value="Planed_Leave">Plan Leave</option>
                     {% endif %}
                     <option value="Early_Leave">Early Leave</option>
-
                 </select>
             </div>
 
             <div class="d-grid">
-                <button type="submit" class="btn btn-success">
+                <button type="submit" id="submitBtn" class="btn btn-success">
                     Apply Leave
                 </button>
             </div>
 
         </form>
+
         <div class="text-center mt-4">
-        <a href="/dashboard_page" class="btn btn-secondary">Back to Dashboard</a>
+            <a href="/dashboard_page" class="btn btn-secondary">Back to Dashboard</a>
         </div>
 </div>
+
+<script>
+    const startDate = document.getElementById("leave_start");
+    const endDate = document.getElementById("leave_end");
+    const errorDiv = document.getElementById("dateError");
+    const submitBtn = document.getElementById("submitBtn");
+
+    function validateDates() {
+        if (startDate.value && endDate.value && endDate.value < startDate.value) {
+            errorDiv.style.display = "block";
+            submitBtn.disabled = true;
+        } else {
+            errorDiv.style.display = "none";
+            submitBtn.disabled = false;
+        }
+    }
+
+    startDate.addEventListener("change", validateDates);
+    endDate.addEventListener("change", validateDates);
+</script>
+
 {% if data %}
 <div class="alert alert-info mt-3">{{ data }}</div>
 {% endif %}
+
 {% endblock %}

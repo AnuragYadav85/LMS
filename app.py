@@ -17,7 +17,7 @@ cursor.execute("PRAGMA foreign_keys = ON;")
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS employee (
-    degsignation TEXT,
+    designation TEXT,
     email TEXT NOT NULL,
     name TEXT NOT NULL,
     surname TEXT NOT NULL,
@@ -77,18 +77,19 @@ CREATE TABLE IF NOT EXISTS approve_table (
 )
 """)
 
+cursor.execute("""CREATE TABLE IF NOT EXISTS admin_email (email)""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS sms_table 
+    (email TEXT PRIMARY KEY, sms TEXT, timestamp DATETIME)""")
+
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS system_config (
     key TEXT PRIMARY KEY,
     value TEXT
 )
 """)
-
-cursor.execute("""CREATE TABLE IF NOT EXISTS admin_email (email)""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS sms_table 
-    (email TEXT PRIMARY KEY, sms TEXT, timestamp DATETIME)""")
 
 cursor.execute("""
 INSERT OR IGNORE INTO system_config (key, value)
@@ -98,27 +99,39 @@ INSERT OR IGNORE INTO system_config (key, value)
 sql.commit()
 
 
-def auto_add_leave():
-    today = date.today()
-    today_str = today.isoformat()
-
-    last_update_str = cursor.execute("SELECT value FROM system_config WHERE key='last_leave_update'").fetchone()[0]
-    last_update = date.fromisoformat(last_update_str)
-
+def auto_add_leave(today, last_update):
+    today = date.fromisoformat(today)
+    last_update = date.fromisoformat(last_update)
     if today.month != last_update.month or today.year != last_update.year:
         cursor.execute("""
             UPDATE leave_remaining
             SET Sick_Leave = Sick_Leave + 0.83,
                 Casual_Leave = Casual_Leave + 1
         """)
-
+        today_save = today.isoformat()
         cursor.execute("""
             UPDATE system_config
             SET value = ?
             WHERE key = 'last_leave_update'
-        """, (today_str,))
+        """, (today_save,))
 
-        sql.commit()
+    if today.year != last_update.year:
+        cursor.execute("""
+            SELECT Summer_Vacation, Planed_Leave FROM leave_remaining
+        """)
+        rows = cursor.fetchall()
+        for row in rows:
+            if row[0] > 60:
+                cursor.execute("""
+                    UPDATE leave_remaining
+                    SET Summer_Vacation = 60
+                """)
+            if row[1] > 60:
+                cursor.execute("""
+                    UPDATE leave_remaining
+                    SET Planed_Leave = 12
+                """)
+    sql.commit()
 
 
 def outer_add_emp( designation, email, name, surname, department, password, type, join_date):
@@ -207,6 +220,7 @@ def dashboard_page():
     if "type" not in session:
         return redirect("/")
     if session.get("type") == "admin":
+        cursor.execute("""""")
         return render_template("admin_dashboard.html")
     cursor.execute("""
       SELECT Sick_Leave, Casual_Leave, Conpenstaion_off, Summer_Vacation 
@@ -278,11 +292,6 @@ def forgot_password_page():
         type=type,
         step=step,
         data=data)
-
-
-@app.before_request
-def run_monthly_leave():
-    auto_add_leave()
 
 
 @app.route("/login", methods=["POST"])
@@ -757,7 +766,12 @@ def auto_logout():
         return redirect("/")
 
     session["last_activity"] = now
-
+    
+    today = date.today()
+    last_update_str = cursor.execute("SELECT value FROM system_config WHERE key='last_leave_update'").fetchone()[0]
+    last_update = date.fromisoformat(last_update_str)
+    if today.month != last_update.month or today.year != last_update.year:
+        auto_add_leave(today, last_update)
 
 
 if __name__ == "__main__":
