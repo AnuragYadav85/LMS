@@ -1,138 +1,125 @@
 import pandas as pd
-import sqlite3
+import mysql.connector
 import time
 import smtplib
 import random
 
-
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, date, timedelta
 from io import StringIO
 from flask import Flask, render_template, request, redirect, session, Response, jsonify
 
-sql = sqlite3.connect("data.db", check_same_thread=False)
-cursor = sql.cursor()
+sql = mysql.connector.connect(
+    host="localhost",
+    user="lms_user",
+    password="your_password",
+    database="lms_db",
+    autocommit=True
+)
 
+cursor = sql.cursor(dictionary=True)
 
 cursor.execute("PRAGMA foreign_keys = ON;")
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS employee (
-    designation TEXT,
-    email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    department TEXT NOT NULL,
-    password TEXT NOT NULL,
-    join_date TEXT NOT NULL,
+    designation VARCHAR(50),
+    email VARCHAR(50) NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    surname VARCHAR(50) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    password VARCHAR(50) NOT NULL,
+    join_date VARCHAR(50) NOT NULL,
     PRIMARY KEY (email)
 )
 """)
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS admin_table (
-    designation TEXT,
-    email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    department TEXT NOT NULL,
-    password TEXT NOT NULL,
-    join_date TEXT NOT NULL,
+    designation VARCHAR(50),
+    email VARCHAR(50) NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    surname VARCHAR(50) NOT NULL,
+    department VARCHAR(50) NOT NULL,
+    password VARCHAR(50) NOT NULL,
+    join_date VARCHAR(50) NOT NULL,
     PRIMARY KEY (email)
 )
 """)
 
 
 cursor.execute("""
+CREATE TABLE IF NOT EXISTS attendance (
+    email VARCHAR(50) NOT NULL,
+    attendance_date DATE NOT NULL,
+    status VARCHAR(50) ENUM(status IN ('Present', 'Absent', 'Late')) NOT NULL,
+    check_in_time TIME,
+    PRIMARY KEY (email, attendance_date),
+    FOREIGN KEY (email) REFERENCES employee(email)
+)
+""")
+
+
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS leave_record (
-    email TEXT NOT NULL,
-    leave_date_start TEXT NOT NULL,
-    leave_date_end TEXT NOT NULL,
-    leave_type TEXT CHECK(leave_type IN ('Sick_Leave', 'Casual_Leave', 'Conpenstaion_off','Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave')) NOT NULL,
-    applyed_on TEXT DEFAULT (DATE('now')),
-    approve TEXT NOT NULL,
-    message TEXT NOT NULL
+    email VARCHAR(50) NOT NULL,
+    leave_date_start VARCHAR(50) NOT NULL,
+    leave_date_end VARCHAR(50) NOT NULL,
+    leave_type VARCHAR(50) ENUM(leave_type IN ('Sick_Leave', 'Casual_Leave', 'Conpenstaion_off','Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave')) NOT NULL,
+    applyed_on VARCHAR(50) DEFAULT (DATE('now')),
+    approve VARCHAR(50) NOT NULL,
+    message VARCHAR(255) NOT NULL
 )
 """)
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS leave_remaining (
-    email TEXT NOT NULL,
-    Sick_Leave FLOAT DEFAULT 0,
-    Casual_Leave FLOAT DEFAULT 0,
-    Conpenstaion_off FLOAT DEFAULT 0,
-    Summer_Vacation FLOAT DEFAULT 0,
-    Planed_Leave FLOAT DEFAULT 0
+    email VARCHAR(50) NOT NULL,
+    Sick_Leave DECIMAL(10, 2) DEFAULT 0,
+    Casual_Leave DECIMAL(10, 2) DEFAULT 0,
+    Conpenstaion_off DECIMAL(10, 2) DEFAULT 0,
+    Summer_Vacation DECIMAL(10, 2) DEFAULT 0,
+    Planed_Leave DECIMAL(10, 2) DEFAULT 0
 )
 """)
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS approve_table (
-    email TEXT NOT NULL,
-    leave_type TEXT CHECK(leave_type IN ('Sick_Leave', 'Casual_Leave', 'Conpenstaion_off','Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave')) NOT NULL,
-    leave_date_start TEXT NOT NULL,
-    leave_date_end TEXT NOT NULL,
-    applyed_on TEXT DEFAULT (datetime('now','localtime')),
-    approve TEXT NOT NULL DEFAULT 'Pending',
-    message TEXT NOT NULL
+    email VARCHAR(50) NOT NULL,
+    leave_type VARCHAR(50) ENUM(leave_type IN ('Sick_Leave', 'Casual_Leave', 'Conpenstaion_off','Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave')) NOT NULL,
+    leave_date_start VARCHAR(50) NOT NULL,
+    leave_date_end VARCHAR(50) NOT NULL,
+    applyed_on VARCHAR(50) DEFAULT (datetime('now','localtime')),
+    approve VARCHAR(50) NOT NULL DEFAULT 'Pending',
+    message VARCHAR(50) NOT NULL
 )
 """)
-
-cursor.execute("""CREATE TABLE IF NOT EXISTS admin_email (email)""")
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS sms_table 
-    (email TEXT PRIMARY KEY, sms TEXT, timestamp DATETIME)""")
-
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS system_config (
-    key TEXT PRIMARY KEY,
-    value TEXT
-)
-""")
-
-cursor.execute("""
-INSERT OR IGNORE INTO system_config (key, value)
-    VALUES ('last_leave_update', ?)
-""",((date.today().isoformat(),)))
+    (email VARCHAR(50) PRIMARY KEY, sms VARCHAR(50), timestamp DATETIME)""")
 
 sql.commit()
 
 
-def auto_add_leave(today, last_update):
-    today = date.fromisoformat(today)
-    last_update = date.fromisoformat(last_update)
-    if today.month != last_update.month or today.year != last_update.year:
-        cursor.execute("""
-            UPDATE leave_remaining
-            SET Sick_Leave = Sick_Leave + 0.83,
-                Casual_Leave = Casual_Leave + 1
-        """)
-        today_save = today.isoformat()
-        cursor.execute("""
-            UPDATE system_config
-            SET value = ?
-            WHERE key = 'last_leave_update'
-        """, (today_save,))
-
-    if today.year != last_update.year:
-        cursor.execute("""
-            SELECT Summer_Vacation, Planed_Leave FROM leave_remaining
-        """)
-        rows = cursor.fetchall()
-        for row in rows:
-            if row[0] > 60:
-                cursor.execute("""
-                    UPDATE leave_remaining
-                    SET Summer_Vacation = 60
-                """)
-            if row[1] > 60:
-                cursor.execute("""
-                    UPDATE leave_remaining
-                    SET Planed_Leave = 12
-                """)
+def auto_add_leave():
+    cursor.execute("""
+    UPDATE leave_remaining
+        SET Sick_Leave = Sick_Leave + 0.83,
+            Casual_Leave = Casual_Leave + 1
+    """)
     sql.commit()
 
+def auto_summer_plan():
+    cursor.execute("""UPDATE leave_remaining
+        SET Summer_Vacation = Summer_Vacation + 30
+        WHERE email IN (SELECT email FROM employee)
+    """)
+    cursor.execute("""UPDATE leave_remaining
+        SET Planed_Leave = Planed_Leave + 30
+        WHERE email IN (SELECT email FROM admin_table)
+    """)
+    sql.commit()
 
 def outer_add_emp( designation, email, name, surname, department, password, type, join_date):
     email = email.lower()
@@ -141,39 +128,39 @@ def outer_add_emp( designation, email, name, surname, department, password, type
         return "Invalid email format OR name/surname does not match!"
 
     if type == 'admin':
-        cursor.execute("SELECT email FROM admin_table WHERE email = ?", (email,))
+        cursor.execute("SELECT email FROM admin_table WHERE email = %s", (email,))
         if cursor.fetchone():
             return f"Admin {email} already exists!"
 
         cursor.execute("""
             INSERT INTO admin_table
             (designation, email, name, surname, department, password, join_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (designation, email, name, surname, department, password, join_date))
 
         cursor.execute(
-            "INSERT INTO leave_remaining (email) VALUES (?)",
+            "INSERT INTO leave_remaining (email) VALUES (%s)",
             (email,)
         )
                 
-        cursor.execute("""INSERT OR IGNORE INTO admin_email (email) VALUES (?)
+        cursor.execute("""INSERT OR IGNORE INTO admin_email (email) VALUES (%s)
                        """, (email,))
         
         sql.commit()
         return f"Admin {email} added successfully!"
     else:
-        cursor.execute("SELECT email FROM employee WHERE email = ?", (email,))
+        cursor.execute("SELECT email FROM employee WHERE email = %s", (email,))
         if cursor.fetchone():
             return f"Employee {email} already exists!"
 
         cursor.execute("""
             INSERT INTO employee
             ( designation, email, name, surname, department, password, join_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (designation, email, name, surname, department, password, join_date))
 
         cursor.execute(
-            "INSERT INTO leave_remaining (email) VALUES (?)",
+            "INSERT INTO leave_remaining (email) VALUES (%s)",
             (email,)
         )
 
@@ -202,6 +189,25 @@ def send_email_emp(subject, body, email):
     mail.sendmail('anuragyadav8591@gmail.com', email, message)
     mail.quit()
     
+def auto_mark_absent():
+    today_str = date.today()
+    cursor.execute("""
+        INSERT INTO attendance (email, attendance_date, status)
+        SELECT email, %s, 'Absent'
+        FROM employee
+        WHERE email NOT IN (
+            SELECT email FROM attendance WHERE attendance_date = %s
+        )
+    """,(today_str, today_str))
+    cursor.execute("""
+        INSERT INTO attendance (email, attendance_date, status)
+        SELECT email, %s, 'Absent'
+        FROM admin_table
+        WHERE email NOT IN (
+            SELECT email FROM attendance WHERE attendance_date = %s
+        )
+    """,(today_str, today_str))
+    sql.commit()
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
@@ -225,7 +231,7 @@ def dashboard_page():
     cursor.execute("""
       SELECT Sick_Leave, Casual_Leave, Conpenstaion_off, Summer_Vacation 
       FROM leave_remaining 
-      WHERE email = ?
+      WHERE email = %s
     """, (session.get("email"),))
 
     balance = cursor.fetchone()
@@ -239,11 +245,11 @@ def leavehistory_page():
     cursor.execute("""
         SELECT leave_type, leave_date_start, leave_date_end, approve, applyed_on
         FROM leave_record
-        WHERE email = ?
+        WHERE email = %s
         UNION ALL
         SELECT leave_type, leave_date_start, leave_date_end, approve, applyed_on
         FROM approve_table
-        WHERE email = ?
+        WHERE email = %s
         ORDER BY leave_date_start DESC
     """, (email,email,))
     data = cursor.fetchall()
@@ -300,12 +306,11 @@ def login():
     password = request.form["password"]
 
     cursor.execute("""
-        SELECT designation, name, surname, department, join_date
-        FROM employee WHERE EMAIL = ? AND PASSWORD = ?
+        SELECT designation, name, surname, department, join_date,
+        FROM employee WHERE EMAIL = %s AND PASSWORD = %s
     """, (email, password))
 
     data = cursor.fetchone()
-    sql.commit()
 
     if data is None:
         return render_template("login.html", data="Invalid Email or Password Credential")
@@ -317,8 +322,19 @@ def login():
     session["surname"] = data[2]
     session["department"] = data[3]
     session["join_date"] = data[4]
-    update_last_activity()
 
+    cursor.execute("""SELECT status FROM attendance
+        WHERE email = %s AND attendance_date = %s""", (email, datetime.now().strftime("%Y-%m-%d")))
+    attendance_record = cursor.fetchone()
+    if attendance_record is None:
+        if datetime.now().hour <= 9 and datetime.now().minute <= 0:
+            status = "Present"
+        else:
+            status = "Late"
+        cursor.execute("""
+            INSERT OR IGNORE INTO attendance (email, date, status, check_in_time)
+            VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
+    sql.commit()
     return redirect("/dashboard_page")
 
 
@@ -329,11 +345,10 @@ def admin_login():
 
     cursor.execute("""
         SELECT designation, name, surname, department, join_date
-        FROM admin_table WHERE EMAIL = ? AND PASSWORD = ?
+        FROM admin_table WHERE EMAIL = %s AND PASSWORD = %s
     """, (email, password))
 
     data = cursor.fetchone()
-    sql.commit()
 
     if data is None:
         return render_template("admin_login.html", data="Invalid Email or Password Credential")
@@ -345,8 +360,15 @@ def admin_login():
     session["surname"] = data[2]
     session["department"] = data[3]
     session["join_date"] = data[4]
-    update_last_activity()
-
+    
+    if datetime.now().hour <= 9 and datetime.now().minute <= 0:
+        status = "Present"
+    else:
+        status = "Late"
+    cursor.execute("""
+        INSERT OR IGNORE INTO attendance (email, date, status, check_in_time)
+        VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
+    sql.commit()
     return redirect("/dashboard_page")
 
 
@@ -361,19 +383,19 @@ def forgot_password():
     if new_password != confirm_password:
         return "New Password and Confirm Password do not match"
 
-    cursor.execute("SELECT sms FROM sms_table WHERE email = ?", (email,))
+    cursor.execute("SELECT sms FROM sms_table WHERE email = %s", (email,))
     sms_record = cursor.fetchone()
     
     if sms_record == None:
         return render_template("/forgot_password.html", data="Email code is required please Send the code", step = '1')
     cursor.execute("""
-        SELECT timestamp FROM sms_table WHERE email = ?
+        SELECT timestamp FROM sms_table WHERE email = %s
     """, (email,))
     row = cursor.fetchone()
     expire = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
 
     if datetime.now() - expire > timedelta(minutes=5):
-        cursor.execute("DELETE FROM sms_table WHERE email = ?", (email,))
+        cursor.execute("DELETE FROM sms_table WHERE email = %s", (email,))
         sql.commit()
         return render_template("/forgot_password.html", data="OTP expired Please resend the OTP")
 
@@ -381,10 +403,10 @@ def forgot_password():
         return render_template("/forgot_password.html", data="Invalid SMS code", step="2", email = email, type = type)
 
     if type == 'admin':
-        cursor.execute("UPDATE admin_table SET password = ? WHERE email = ?", (new_password, email,))
+        cursor.execute("UPDATE admin_table SET password = %s WHERE email = %s", (new_password, email,))
     else:
-        cursor.execute("UPDATE employee SET password = ? WHERE email = ?", (new_password, email,))
-    cursor.execute("DELETE FROM sms_table WHERE email = ?", (email,))
+        cursor.execute("UPDATE employee SET password = %s WHERE email = %s", (new_password, email,))
+    cursor.execute("DELETE FROM sms_table WHERE email = %s", (email,))
     sql.commit()
     
     return render_template("/forgot_password.html", data="Password Updated Successfully")
@@ -396,16 +418,16 @@ def send_forgot_sms():
     type = request.form["type"]
     
     if type == "admin":
-        cursor.execute("SELECT email FROM admin_table WHERE email = ?", (email,))
+        cursor.execute("SELECT email FROM admin_table WHERE email = %s", (email,))
     else:
-        cursor.execute("SELECT email FROM employee WHERE email = ?", (email,))
+        cursor.execute("SELECT email FROM employee WHERE email = %s", (email,))
 
     if cursor.fetchone() is None:
         return render_template('/forgot_password.html', data = 'Email Not Register')
     
     sms_code = random.randint(100000, 999999)
     cursor.execute("""INSERT OR REPLACE INTO sms_table (email, sms, timestamp)
-                   VALUES (?, ?, ?)""",
+                   VALUES (%s, %s, %s)""",
                    (email, sms_code, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     sql.commit()
     send_email_emp(
@@ -418,7 +440,7 @@ def send_forgot_sms():
                 
             Regards,
             Automated Leave Management System""", email)
-    return redirect(f"/forgot_password_page?email={email}&type={type}&step=2")
+    return redirect(f"/forgot_password_page%semail={email}&type={type}&step=2")
 
 
 @app.route("/add_employee", methods=["POST"])
@@ -444,7 +466,7 @@ def applyleave():
     apply_end_date = request.form["leave_end"]
     leave_type = request.form["leave_type"]
 
-    cursor.execute(f"SELECT {leave_type} FROM leave_remaining WHERE email = ?", (email,))
+    cursor.execute(f"SELECT {leave_type} FROM leave_remaining WHERE email = %s", (email,))
     remain = cursor.fetchone()
     
     if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
@@ -456,7 +478,7 @@ def applyleave():
     
     cursor.execute("""
             SELECT * FROM approve_table
-            WHERE email = ? AND leave_date_start = ?
+            WHERE email = %s AND leave_date_start = %s
     """, (email, apply_start_date))
     data = cursor.fetchall()
     if data:
@@ -464,7 +486,7 @@ def applyleave():
     
     cursor.execute("""
             SELECT approve FROM leave_record
-            WHERE email = ? AND leave_date_start = ?
+            WHERE email = %s AND leave_date_start = %s
     """, (email, apply_start_date))
     data = cursor.fetchall()
     for row in data:
@@ -473,7 +495,7 @@ def applyleave():
         
     cursor.execute("""
             INSERT INTO approve_table (email, leave_type, leave_date_start, leave_date_end)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
         """, (email, leave_type, apply_start_date, apply_end_date,))
     send_email_admin(
         f"No Reply - Leave Application Notification from {email}",
@@ -506,7 +528,7 @@ def applyleave():
 
 @app.route("/approve/<email>/<start>/<end>/<leave_type>/<dateon>")
 def approve(email, start, end, leave_type, dateon):
-    cursor.execute("SELECT name, surname FROM employee WHERE email = ?", (email,))
+    cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
 
     if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
@@ -514,18 +536,18 @@ def approve(email, start, end, leave_type, dateon):
         end_date = datetime.strptime(end, "%Y-%m-%d")
         cursor.execute(f"""
             UPDATE leave_remaining
-            SET {leave_type} = {leave_type} - ?
-            WHERE email = ?
+            SET {leave_type} = {leave_type} - %s
+            WHERE email = %s
         """, ((end_date - start_date).days + 1, email,))
 
     cursor.execute("""
         INSERT INTO leave_record (email, leave_date_start, leave_date_end, leave_type, applyed_on, approve)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """, (email, start, end, leave_type, dateon, "Approved"))
     
     cursor.execute("""
         DELETE FROM approve_table
-        WHERE email = ? AND leave_date_start = ? AND leave_date_end = ? AND leave_type = ? AND applyed_on = ?
+        WHERE email = %s AND leave_date_start = %s AND leave_date_end = %s AND leave_type = %s AND applyed_on = %s
     """, (email, start, end, leave_type, dateon))
     
     send_email_emp(
@@ -545,17 +567,17 @@ def approve(email, start, end, leave_type, dateon):
 
 @app.route("/reject/<email>/<start>/<end>/<leave_type>/<dateon>")
 def reject(email, start, end, leave_type, dateon):
-    cursor.execute("SELECT name, surname FROM employee WHERE email = ?", (email,))
+    cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
     
     cursor.execute("""
         INSERT INTO leave_record (email, leave_date_start, leave_date_end, leave_type, applyed_on, approve)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
     """, (email, start, end, leave_type, dateon, "Rejected"))
     
     cursor.execute("""
         DELETE FROM approve_table
-        WHERE email = ? AND leave_date_start = ? AND leave_date_end = ? AND leave_type = ? AND applyed_on = ?
+        WHERE email = %s AND leave_date_start = %s AND leave_date_end = %s AND leave_type = %s AND applyed_on = %s
     """, (email, start, end, leave_type, dateon))
 
     send_email_emp(
@@ -576,7 +598,7 @@ def reject(email, start, end, leave_type, dateon):
 
 @app.route("/cancel/<email>/<start>/<end>/<leave_type>/<dateon>")
 def cancel_action(email, start, end, leave_type, dateon):
-    cursor.execute("SELECT name, surname FROM employee WHERE email = ?", (email,))
+    cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
     start_date = datetime.strptime(start, "%Y-%m-%d")
     end_date = datetime.strptime(end, "%Y-%m-%d")
@@ -585,14 +607,14 @@ def cancel_action(email, start, end, leave_type, dateon):
     if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
         cursor.execute(f"""
             UPDATE leave_remaining
-            SET {leave_type} = {leave_type} + ?
-            WHERE email = ?
+            SET {leave_type} = {leave_type} + %s
+            WHERE email = %s
         """, (days, email))
 
     cursor.execute("""
         UPDATE leave_record
         SET approve = 'Cancelled'
-        WHERE email = ? AND leave_date_start = ? AND leave_date_end = ? AND leave_type = ? AND applyed_on = ?
+        WHERE email = %s AND leave_date_start = %s AND leave_date_end = %s AND leave_type = %s AND applyed_on = %s
     """, (email, start, end, leave_type, dateon))
     
     send_email_emp(
@@ -632,13 +654,13 @@ def add_leave_balance():
     leave_type = request.form["leave_type"]
     days = int(request.form["days"])
     
-    cursor.execute("SELECT name, surname FROM employee WHERE email = ?", (to_email,))
+    cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (to_email,))
     emp_name, emp_surname = cursor.fetchone()
     
     cursor.execute(f"""
         UPDATE leave_remaining
-        SET {leave_type} = {leave_type} + ?
-        WHERE email = ?
+        SET {leave_type} = {leave_type} + %s
+        WHERE email = %s
     """, (days, to_email))
     sql.commit()
     
@@ -678,7 +700,7 @@ def download_all_reports():
         cursor.execute("""
             SELECT Sick_Leave, Casual_Leave, Conpenstaion_off, Summer_Vacation
             FROM leave_remaining
-            WHERE email = ?
+            WHERE email = %s
         """, (email,))
         remain = cursor.fetchone()
 
@@ -701,7 +723,7 @@ def download_all_reports():
         cursor.execute("""
             SELECT leave_type, leave_date_start, leave_date_end, applyed_on, approve
             FROM leave_record
-            WHERE email = ?
+            WHERE email = %s
             ORDER BY leave_date_start DESC
         """, (email,))
         history = cursor.fetchall()
@@ -767,12 +789,12 @@ def auto_logout():
 
     session["last_activity"] = now
     
-    today = date.today()
-    last_update_str = cursor.execute("SELECT value FROM system_config WHERE key='last_leave_update'").fetchone()[0]
-    last_update = date.fromisoformat(last_update_str)
-    if today.month != last_update.month or today.year != last_update.year:
-        auto_add_leave(today, last_update)
 
+scheduler = BackgroundScheduler()
+scheduler.add_job(auto_mark_absent, 'cron', hour=23, minute=59)
+scheduler.add_job(auto_add_leave, 'cron', day=1, hour=0, minute=0)
+scheduler.add_job(auto_summer_plan, 'cron', month=1, day=1, hour=0, minute=0)
+scheduler.start()
 
 if __name__ == "__main__":
     app.run(debug=True)
