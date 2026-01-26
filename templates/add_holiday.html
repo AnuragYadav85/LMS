@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-header bg-primary text-white">
+        <h4 class="mb-0">Add Public Holidays</h4>
+    </div>
+
+    <div class="card-body">
+        <form method="POST" action="/add_holiday" onsubmit="prepareData()">
+
+            <input type="hidden" name="holiday_date" id="holiday_date">
+            <input type="hidden" name="occasion" id="occasion">
+            <input type="hidden" name="type" value="admin">
+
+            <div class="row">
+                <div class="col-md-5 mb-3">
+                    <label>Date</label>
+                    <input type="date" class="form-control" id="date_input">
+                </div>
+
+                <div class="col-md-5 mb-3">
+                    <label>Occasion</label>
+                    <input type="text" class="form-control" id="occasion_input" placeholder="Occasion name">
+                </div>
+
+                <div class="col-md-2 mb-3 d-flex align-items-end">
+                    <button type="button" class="btn btn-secondary w-100" onclick="addHoliday()">Add</button>
+                </div>
+            </div>
+
+            <hr>
+
+            <h6>Added Holidays</h6>
+            <ul id="holiday_list" class="list-group mb-3"></ul>
+
+            <button class="btn btn-success w-100">
+                Save Holidays
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    let dates = [];
+    let occasions = [];
+
+    function addHoliday() {
+        const date = document.getElementById("date_input").value;
+        const occasion = document.getElementById("occasion_input").value;
+
+        if (!date || !occasion) {
+            alert("Please enter both date and occasion");
+            return;
+        }
+
+        dates.push(date);
+        occasions.push(occasion);
+
+        const list = document.getElementById("holiday_list");
+        const li = document.createElement("li");
+        li.className = "list-group-item";
+        li.innerText = date + " - " + occasion;
+        list.appendChild(li);
+
+        document.getElementById("date_input").value = "";
+        document.getElementById("occasion_input").value = "";
+    }
+
+    function prepareData() {
+        document.getElementById("holiday_date").value = dates.join(",") + ",";
+        document.getElementById("occasion").value = occasions.join(",") + ",";
+    }
+</script>
+
+{% endblock %}

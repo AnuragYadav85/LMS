@@ -16,8 +16,8 @@ sql = mysql.connector.connect(
     database="LMS",
     autocommit=True
 )
-
-cursor = sql.cursor()
+cursor = sql.cursor(buffered=True)
+scheduler = BackgroundScheduler()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS employee (
@@ -53,7 +53,7 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS attendance (
     email VARCHAR(50),
     attendance_date DATE,
-    status ENUM('Present','Absent','Late'),
+    status ENUM('Present','Absent','Late', 'Half Day', 'Holiday', 'Weekly Off', 'Duty Leave'),
     check_in_time TIME,
     PRIMARY KEY (email, attendance_date)
 )
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS leave_record (
     leave_date_end VARCHAR(50),
     leave_type ENUM(
         'Sick_Leave','Casual_Leave','Conpenstaion_off',
-        'Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave'
+        'Summer_Vacation','Planed_Leave','Duty_Leave','Early_Leave','Leave_Without_Pay'
     ),
     applyed_on DATETIME DEFAULT CURRENT_TIMESTAMP,
     approve VARCHAR(50),
@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS approve_table (
     applyed_on DATETIME DEFAULT CURRENT_TIMESTAMP,
     approve VARCHAR(50) DEFAULT 'Pending',
     message VARCHAR(50)
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS public_holidays (
+    date DATE,
+    occasion VARCHAR(100),
+    PRIMARY KEY (date, occasion)
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS weekly_off_days (
+    email VARCHAR(50),
+    day VARCHAR(20),
+    type INT DEFAULT 0,
+    PRIMARY KEY (email, day)
 )
 """)
 
@@ -128,6 +145,77 @@ def auto_summer_plan():
         SET Planed_Leave = Planed_Leave + 30
         WHERE email IN (SELECT email FROM admin_table)
     """)
+    sql.commit()
+
+def auto_mark_absent():
+    today_str = date.today()
+
+    for attempt in range(3):
+        try:
+            cursor.execute("""
+                INSERT IGNORE INTO attendance (email, attendance_date, status)
+                SELECT email, %s, 'Absent'
+                FROM employee
+                WHERE email NOT IN (
+                    SELECT email FROM attendance WHERE attendance_date = %s
+                )
+            """, (today_str, today_str))
+
+            cursor.execute("""
+                INSERT IGNORE INTO attendance (email, attendance_date, status)
+                SELECT email, %s, 'Absent'
+                FROM admin_table
+                WHERE email NOT IN (
+                    SELECT email FROM attendance WHERE attendance_date = %s
+                )
+            """, (today_str, today_str))
+            sql.commit()
+            return
+
+        except mysql.connector.errors.InternalError as e:
+            if e.errno == 1213:
+                time.sleep(5)
+                continue
+            else:
+                raise
+
+def check_holidays():
+    today = date.today()
+    cursor.execute("SELECT 1 FROM public_holidays WHERE date = %s", (today,))
+    is_holiday = cursor.fetchone()
+
+    if is_holiday:
+        cursor.execute("""
+            INSERT IGNORE INTO attendance (email, attendance_date, status)
+            SELECT email, %s, 'Holiday' FROM employee
+        """, (today,))
+
+        cursor.execute("""
+            INSERT IGNORE INTO attendance (email, attendance_date, status)
+            SELECT email, %s, 'Holiday' FROM admin_table
+        """, (today,))
+        sql.commit()
+
+def check_weekly_offs():
+    today = date.today()
+    day_name = today.strftime("%A")
+    day_num = today.day
+    if day_name in ('Saturday', 'Sunday', 'Tuesday', 'Wednesday'):
+        cursor.execute("SELECT email, type FROM weekly_off_days WHERE day = %s", (day_name,))
+        weekly_offs = cursor.fetchall()
+        if weekly_offs:
+            for email, off_type in weekly_offs:
+                if off_type == 0 and ((day_name in ('Saturday','Tuesday') and (1 <= day_num <= 7 or 15 <= day_num <= 21)) or day_name in ('Sunday','Wednesday')):
+                    cursor.execute("""
+                        INSERT IGNORE INTO attendance (email, attendance_date, status)
+                        VALUES (%s, %s, 'Weekly Off')
+                    """, (email, today))
+
+                if off_type == 1 and ((day_name in ('Saturday','Tuesday') and (8 <= day_num <= 14 or 22 <= day_num <= 28)) or day_name in ('Sunday','Wednesday')):
+                    cursor.execute("""
+                        INSERT IGNORE INTO attendance (email, attendance_date, status)
+                        VALUES (%s, %s, 'Weekly Off')
+                    """, (email, today))
     sql.commit()
 
 def outer_add_emp( designation, email, name, surname, department, password, type, join_date):
@@ -177,7 +265,6 @@ def outer_add_emp( designation, email, name, surname, department, password, type
         return f"Employee {email} added successfully!"
 outer_add_emp("MR", "anurag.yadav@gnims.com", "Anurag", "Yadav", "IT", "123", "admin", "2025-06-25")
 
-
 def send_email_admin(subject, body):
     cursor.execute("SELECT email FROM admin_email")
     to_address = cursor.fetchone()[0]
@@ -195,26 +282,7 @@ def send_email_emp(subject, body, email):
     message = f"Subject: {subject}\n\n{body}"
     mail.sendmail('anuragyadav8591@gmail.com', email, message)
     mail.quit()
-    
-def auto_mark_absent():
-    today_str = date.today()
-    cursor.execute("""
-        INSERT IGNORE INTO attendance (email, attendance_date, status)
-        SELECT email, %s, 'Absent'
-        FROM employee
-        WHERE email NOT IN (
-            SELECT email FROM attendance WHERE attendance_date = %s
-        )
-    """,(today_str, today_str))
-    cursor.execute("""
-        INSERT IGNORE INTO attendance (email, attendance_date, status)
-        SELECT email, %s, 'Absent'
-        FROM admin_table
-        WHERE email NOT IN (
-            SELECT email FROM attendance WHERE attendance_date = %s
-        )
-    """,(today_str, today_str))
-    sql.commit()
+
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
@@ -306,6 +374,14 @@ def forgot_password_page():
         step=step,
         data=data)
 
+@app.route("/add_holiday_page")
+def add_holiday_page():
+    return render_template("add_holiday.html")
+
+@app.route("/add_weekly_off_page")
+def add_weekly_off_page():
+    return render_template("add_weekly_off.html")
+
 
 @app.route("/login", methods=["POST"])
 def login():
@@ -334,10 +410,16 @@ def login():
         WHERE email = %s AND attendance_date = %s""", (email, datetime.now().strftime("%Y-%m-%d")))
     attendance_record = cursor.fetchone()
     if attendance_record is None:
-        if datetime.now().hour <= 9 and datetime.now().minute <= 0:
+        compare_in_time_hour = datetime.now().hour
+        compare_in_time_min = datetime.now().minute
+        if compare_in_time_hour <= 9 and compare_in_time_min <= 30:
             status = "Present"
-        else:
+        elif (compare_in_time_hour >= 9 and compare_in_time_min >= 30) and (compare_in_time_hour <=10 and compare_in_time_min <= 0):
             status = "Late"
+        elif (compare_in_time_hour >= 10 and compare_in_time_min >= 0) and (compare_in_time_hour <= 13 and compare_in_time_min <= 0):
+            status = "Half Day"
+        else:
+            status = "Absent"
         cursor.execute("""
             INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
             VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
@@ -367,13 +449,23 @@ def admin_login():
     session["department"] = data[3]
     session["join_date"] = data[4]
     
-    if datetime.now().hour <= 9 and datetime.now().minute <= 0:
-        status = "Present"
-    else:
-        status = "Late"
-    cursor.execute("""
-        INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
-        VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
+    cursor.execute("""SELECT status FROM attendance
+        WHERE email = %s AND attendance_date = %s""", (email, datetime.now().strftime("%Y-%m-%d")))
+    attendance_record = cursor.fetchone()
+    if attendance_record is None:
+        compare_in_time_hour = datetime.now().hour
+        compare_in_time_min = datetime.now().minute
+        if compare_in_time_hour <= 9 and compare_in_time_min <= 30:
+            status = "Present"
+        elif (compare_in_time_hour >= 9 and compare_in_time_min >= 30) and (compare_in_time_hour <=10 and compare_in_time_min <= 0):
+            status = "Late"
+        elif (compare_in_time_hour >= 10 and compare_in_time_min >= 0) and (compare_in_time_hour <= 13 and compare_in_time_min <= 0):
+            status = "Half Day"
+        else:
+            status = "Absent"
+        cursor.execute("""
+            INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
+            VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
     sql.commit()
     return redirect("/dashboard_page")
 
@@ -471,24 +563,7 @@ def applyleave():
     surname = session.get("surname")
     apply_start_date = request.form["leave_start"]
     apply_end_date = request.form["leave_end"]
-    leave_type = request.form["leave_type"]
-
-    cursor.execute(f"SELECT {leave_type} FROM leave_remaining WHERE email = %s", (email,))
-    remain = cursor.fetchone()
-    
-    if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
-        if remain[0] == 0:
-            return render_template("apply_leave.html", data = f"{leave_type} leave stack is empty — cannot apply!")
-        count = (datetime.strptime(apply_end_date, "%Y-%m-%d") - datetime.strptime(apply_start_date, "%Y-%m-%d")).days + 1
-        if remain[0] < count:
-            return render_template("apply_leave.html", data = f"Insufficient {leave_type} Balance, you are trying to apply for {count} days and your leave balance is {int(remain[0])} days.")
-        start_date = datetime.strptime(apply_start_date, "%Y-%m-%d")
-        end_date = datetime.strptime(apply_end_date, "%Y-%m-%d")
-        cursor.execute(f"""
-            UPDATE leave_remaining
-            SET {leave_type} = {leave_type} - %s
-            WHERE email = %s
-        """, ((end_date - start_date).days + 1, email,))
+    leave_type = request.form["leave_type"] 
     
     cursor.execute("""
             SELECT * FROM approve_table
@@ -504,7 +579,7 @@ def applyleave():
             return render_template("apply_leave.html", data = f"You have already applied for leave on this date {apply_end_date}.")
         if data[3] == apply_start_date:
             return render_template("apply_leave.html", data = f"You have already applied for leave on this date {apply_start_date}.")
-
+    
     cursor.execute("""
             SELECT approve FROM leave_record
             WHERE email = %s AND leave_date_start = %s
@@ -513,6 +588,28 @@ def applyleave():
     for row in data:
         if row[0] == 'Approved':
             return render_template("apply_leave.html", data = f"You have already applied for leave on this date {apply_start_date}.")
+        
+    if leave_type == 'Duty_Leave':
+        if apply_start_date != apply_end_date:
+            return render_template("apply_leave.html", data = "Duty Leave can only be applied for a single day.")
+        if apply_start_date > str(date.today()):
+            return render_template("apply_leave.html", data = "Duty Leave can only be applied for past dates.")
+    
+    if leave_type != 'Early_Leave' and leave_type != 'Duty_Leave':
+        cursor.execute(f"SELECT {leave_type} FROM leave_remaining WHERE email = %s", (email,))
+        remain = cursor.fetchone()
+        if remain[0] == 0:
+            return render_template("apply_leave.html", data = f"{leave_type} stack is empty — cannot apply!")
+        count = (datetime.strptime(apply_end_date, "%Y-%m-%d") - datetime.strptime(apply_start_date, "%Y-%m-%d")).days + 1
+        if remain[0] < count:
+            return render_template("apply_leave.html", data = f"Insufficient {leave_type} Balance, you are trying to apply for {count} days and your leave balance is {int(remain[0])} days.")
+        start_date = datetime.strptime(apply_start_date, "%Y-%m-%d")
+        end_date = datetime.strptime(apply_end_date, "%Y-%m-%d")
+        cursor.execute(f"""
+            UPDATE leave_remaining
+            SET {leave_type} = {leave_type} - %s
+            WHERE email = %s
+        """, ((end_date - start_date).days + 1, email,))
         
     cursor.execute("""
             INSERT INTO approve_table (email, leave_type, leave_date_start, leave_date_end)
@@ -551,6 +648,12 @@ def applyleave():
 def approve(email, start, end, leave_type, dateon):
     cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
+    
+    if leave_type == 'Duty_Leave':
+        cursor.execute("""
+            INSERT INTO attendance (email, attendance_date, status)
+            VALUES(%s, %s, 'Duty Leave')
+        """,(email, start,))
 
     cursor.execute("""
         INSERT INTO leave_record (email, leave_date_start, leave_date_end, leave_type, applyed_on, approve)
@@ -581,12 +684,11 @@ def approve(email, start, end, leave_type, dateon):
 def reject(email, start, end, leave_type, dateon):
     cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
-    
-    start_date = datetime.strptime(start, "%Y-%m-%d")
-    end_date = datetime.strptime(end, "%Y-%m-%d")
-    days = (end_date - start_date).days + 1
 
     if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
+        start_date = datetime.strptime(start, "%Y-%m-%d")
+        end_date = datetime.strptime(end, "%Y-%m-%d")
+        days = (end_date - start_date).days + 1
         cursor.execute(f"""
             UPDATE leave_remaining
             SET {leave_type} = {leave_type} + %s
@@ -623,11 +725,11 @@ def reject(email, start, end, leave_type, dateon):
 def cancel_action(email, start, end, leave_type, dateon):
     cursor.execute("SELECT name, surname FROM employee WHERE email = %s", (email,))
     name, surname = cursor.fetchone()
-    start_date = datetime.strptime(start, "%Y-%m-%d")
-    end_date = datetime.strptime(end, "%Y-%m-%d")
-    days = (end_date - start_date).days + 1
 
     if leave_type != 'Duty_Leave' and leave_type != 'Early_Leave':
+        start_date = datetime.strptime(start, "%Y-%m-%d")
+        end_date = datetime.strptime(end, "%Y-%m-%d")
+        days = (end_date - start_date).days + 1
         cursor.execute(f"""
             UPDATE leave_remaining
             SET {leave_type} = {leave_type} + %s
@@ -717,11 +819,65 @@ def add_leave_balance():
     return redirect("/add_leave_balance_page")
 
 
+@app.route("/add_holiday", methods=["POST"])
+def add_holiday():
+    holiday_date = request.form.get("holiday_date")
+    occasion = request.form.get("occasion")
+    type = request.form.get("type")
+
+    if type == "admin" and holiday_date and occasion:
+        holiday_date = holiday_date.split(",")
+        occasion = occasion.split(",")
+
+        for i in range(len(holiday_date) - 1):
+            cursor.execute("""
+                INSERT IGNORE INTO public_holidays (date, occasion)
+                VALUES (%s, %s)
+            """, (holiday_date[i], occasion[i]))
+
+        sql.commit()
+    return redirect("/add_holiday_page")
+
+@app.route("/add_weekly_off", methods=["POST"])
+def add_weekly_off():
+    email = request.form["email"].split(",")
+    weekly_off_type = request.form["weekly_off_type"]
+    type = session.get("type")
+
+    if email is None or email == [""]:
+        return render_template("add_weekly_off.html", data="Please Provide an email")
+    
+    if weekly_off_type not in ['0', '1','2','3']:
+        return render_template("add_weekly_off.html", data="Please select weekly off")
+
+    if type == "admin":
+        if weekly_off_type in ['0', '1']:
+            days = ['Saturday', 'Sunday']
+            if weekly_off_type == '0':
+                week_off = 0
+            if weekly_off_type == '1':
+                week_off = 1
+        if weekly_off_type in ['2', '3']:
+            days = ['Tuesday', 'Wednesday']
+            if weekly_off_type == '2':
+                week_off = 0
+            if weekly_off_type == '3':
+                week_off = 1
+        for one_email in email:
+            for day in days:
+                cursor.execute("""
+                    INSERT INTO weekly_off_days (email, day, type)
+                    SELECT email, %s, %s FROM employee WHERE email = %s ON DUPLICATE KEY UPDATE type = %s
+                """, (day, week_off, one_email, week_off))  
+    sql.commit()
+    return render_template("/add_weekly_off.html", data="Weekly off updated successfully")
+
 @app.route("/download_all_reports")
 def download_all_reports():
     output = StringIO()
     if session.get("type") == 'admin':
-        employees = cursor.execute("SELECT email, name, surname, department, join_date FROM employee").fetchall()
+        cursor.execute("SELECT email, name, surname, department, join_date FROM employee")
+        employees = cursor.fetchall()
 
     if not employees:
         return "No employees found"
@@ -767,15 +923,13 @@ def download_all_reports():
             ORDER BY leave_date_start DESC
         """, (email,))
         history = cursor.fetchall()
-        
-        today = datetime.now()
-        last_30_days = today - timedelta(days=30)
+
+        last_30_days = datetime.now() - timedelta(days=30)
 
         recent_records = []
 
         for row in history:
-            applied_on = datetime.strptime(row[3], "%Y-%m-%d %H:%M:%S")
-            if applied_on >= last_30_days:
+            if row[3] >= last_30_days:
                 recent_records.append(row)
         if recent_records:
             df_history = pd.DataFrame(recent_records, columns=[
@@ -788,6 +942,28 @@ def download_all_reports():
         else:
             output.write("No leave records in the last 30 days.\n\n")
 
+        cursor.execute("""
+            SELECT * FROM attendance
+            WHERE email = %s
+            ORDER BY attendance_date DESC
+        """, (email,))
+        attendance = cursor.fetchall()
+        
+        last_30_days_date = (datetime.now() - timedelta(days=30)).date()
+        attendance_records = []
+        
+        for row in attendance:
+            if row[1] >= last_30_days_date:
+                attendance_records.append(row)
+        if attendance_records:
+            df_attendance = pd.DataFrame(attendance_records, columns=[
+                "Email", "Attendance Date", "Status", "Check-in Time"
+            ])
+
+            output.write("=== Attendance Records (Last 30 Days) ===\n")
+            df_attendance.to_csv(output, index=False)
+            output.write("\n")
+        
     csv_text = output.getvalue()
 
     return Response(
@@ -830,11 +1006,12 @@ def auto_logout():
     session["last_activity"] = now
     
 
-scheduler = BackgroundScheduler()
+scheduler.add_job(check_holidays, 'cron', hour=0, minute=1)
+scheduler.add_job(check_weekly_offs, 'cron', hour=0, minute=3)
 scheduler.add_job(auto_mark_absent, 'cron', hour=23, minute=59)
-scheduler.add_job(auto_add_leave, 'cron', day=1, hour=0, minute=0)
-scheduler.add_job(auto_summer_plan, 'cron', month=1, day=1, hour=0, minute=0)
-scheduler.start()
+scheduler.add_job(auto_add_leave, 'cron', day=1, hour=0, minute=6)
+scheduler.add_job(auto_summer_plan, 'cron', month=1, day=1, hour=0, minute=7)
 
 if __name__ == "__main__":
+    scheduler.start()
     app.run(debug=True)

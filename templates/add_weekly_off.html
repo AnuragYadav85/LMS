@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="card shadow-sm">
+    <div class="card-header bg-info text-white">
+        <h4 class="mb-0">Add Weekly Off</h4>
+    </div>
+
+    <div class="card-body">
+        <form method="POST" action="/add_weekly_off">
+            <div class="mb-3">
+                <label class="form-label">
+                    Employee Email(s)
+                    <small class="text-muted">(comma separated)</small>
+                </label>
+                <input type="text"
+                       name="email"
+                       class="form-control"
+                       placeholder="example1@gnims.com, example2@gnims.com"
+                       required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Weekly Off Type</label>
+                <select name="weekly_off_type" class="form-select" required>
+                    <option value="">-- Select Weekly Off --</option>
+
+                    <option value="0">
+                        Saturday + Sunday (1st & 3rd week)
+                    </option>
+                    <option value="1">
+                        Saturday + Sunday (2nd & 4th week)
+                    </option>
+                    <option value="2">
+                        Tuesday + Wednesday (1st & 3rd week)
+                    </option>
+                    <option value="3">
+                        Tuesday + Wednesday (2nd & 4th week)
+                    </option>
+                </select>
+            </div>
+            <div class="d-grid">
+                <button class="btn btn-success">
+                    Add Weekly Off
+                </button>
+            </div>
+        </form>
+        {% if data %}
+        <div class="alert alert-info mt-3">
+            {{ data }}
+        </div>
+        {% endif %}
+        <div class="text-center mt-4">
+            <a href="/dashboard_page" class="btn btn-secondary">
+                Back to Dashboard
+            </a>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
