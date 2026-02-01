@@ -3,11 +3,15 @@ import mysql.connector
 import time
 import smtplib
 import random
+import tempfile
 
+from openpyxl import Workbook
+from openpyxl.chart import PieChart, Reference
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, date, timedelta
 from io import StringIO
-from flask import Flask, render_template, request, redirect, session, Response
+from flask import Flask, render_template, request, redirect, session, Response, send_file
 
 sql = mysql.connector.connect(
     host="localhost",
@@ -150,7 +154,7 @@ def auto_summer_plan():
 def auto_mark_absent():
     today_str = date.today()
 
-    for attempt in range(3):
+    for _ in range(3):
         try:
             cursor.execute("""
                 INSERT IGNORE INTO attendance (email, attendance_date, status)
@@ -282,7 +286,56 @@ def send_email_emp(subject, body, email):
     message = f"Subject: {subject}\n\n{body}"
     mail.sendmail('anuragyadav8591@gmail.com', email, message)
     mail.quit()
+    
+def login_time_check(email):
+    current = datetime.now()
+    cursor.execute("""SELECT status FROM attendance
+        WHERE email = %s AND attendance_date = %s""", (email, current.strftime("%Y-%m-%d")))
+    attendance_record = cursor.fetchone()
+    if attendance_record is None:
+        compare_in_time_hour = current.hour
+        compare_in_time_min = current.minute
+        if compare_in_time_hour <= 9 and compare_in_time_min <= 30:
+            status = "Present"
+        elif (compare_in_time_hour >= 9 and compare_in_time_min >= 30) and (compare_in_time_hour <=10 and compare_in_time_min <= 0):
+            status = "Late"
+        elif (compare_in_time_hour >= 10 and compare_in_time_min >= 0) and (compare_in_time_hour <= 13 and compare_in_time_min <= 0):
+            status = "Half Day"
+        else:
+            status = "Absent"
+        cursor.execute("""
+            INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
+            VALUES (%s, %s, %s, %s)""", (email, date.today(), status, current.strftime("%H:%M:%S")))
+        sql.commit()
+    
+def style_cell(cell, font=None, fill=None, align=None, border=None):
+    if font: cell.font = font
+    if fill: cell.fill = fill
+    if align: cell.alignment = align
+    if border: cell.border = border
 
+THIN = Side(style="thin")
+EXCEL_STYLE = {
+    "HEADER_FONT": Font(bold=True, size=12, color="FFFFFF"),
+    "SUB_FONT": Font(bold=True, color="FFFFFF"),
+    "OTHER_FONT": Font(bold=True),
+    "CENTER": Alignment(horizontal="center", vertical="center"),
+    "BORDER": Border(left=THIN, right=THIN, top=THIN, bottom=THIN),
+
+    "EMPOLYEE_NAME": PatternFill("solid", fgColor="000000"),
+    "LEAVE_REMAIN": PatternFill("solid", fgColor="0051FF"),
+    "LEAVE_APPLIED": PatternFill("solid", fgColor="FFC800"),
+    "ATTENDANCE": PatternFill("solid", fgColor="0C9C1E"),
+    "ATTENDANCE_SUMMARY": PatternFill("solid", fgColor="FF0000"),
+    "LIGHT_FILL": PatternFill("solid", fgColor="E7F3FF"),
+
+    "GREEN": PatternFill("solid", fgColor="C6EFCE"),
+    "RED": PatternFill("solid", fgColor="FFC7CE"),
+    "YELLOW": PatternFill("solid", fgColor="FFEB9C"),
+    "BLUE": PatternFill("solid", fgColor="D9E1F2"),
+    "ORANGE": PatternFill("solid", fgColor="FCE4D6"),
+    "PURPLE": PatternFill("solid", fgColor="E4DFEC"),
+}
 
 app = Flask(__name__)
 app.secret_key = "your_secret_key"
@@ -360,6 +413,10 @@ def add_leave_balance_page():
 def download_all_reports_page():
     return render_template("download_all_reports.html")
 
+@app.route("/download_report_self_page")
+def download_report_self_page():
+    return render_template("download_report_self.html")
+
 @app.route("/forgot_password_page")
 def forgot_password_page():
     email = request.args.get("email")
@@ -405,25 +462,7 @@ def login():
     session["surname"] = data[2]
     session["department"] = data[3]
     session["join_date"] = data[4]
-
-    cursor.execute("""SELECT status FROM attendance
-        WHERE email = %s AND attendance_date = %s""", (email, datetime.now().strftime("%Y-%m-%d")))
-    attendance_record = cursor.fetchone()
-    if attendance_record is None:
-        compare_in_time_hour = datetime.now().hour
-        compare_in_time_min = datetime.now().minute
-        if compare_in_time_hour <= 9 and compare_in_time_min <= 30:
-            status = "Present"
-        elif (compare_in_time_hour >= 9 and compare_in_time_min >= 30) and (compare_in_time_hour <=10 and compare_in_time_min <= 0):
-            status = "Late"
-        elif (compare_in_time_hour >= 10 and compare_in_time_min >= 0) and (compare_in_time_hour <= 13 and compare_in_time_min <= 0):
-            status = "Half Day"
-        else:
-            status = "Absent"
-        cursor.execute("""
-            INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
-            VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
-    sql.commit()
+    login_time_check(email)
     return redirect("/dashboard_page")
 
 
@@ -448,25 +487,7 @@ def admin_login():
     session["surname"] = data[2]
     session["department"] = data[3]
     session["join_date"] = data[4]
-    
-    cursor.execute("""SELECT status FROM attendance
-        WHERE email = %s AND attendance_date = %s""", (email, datetime.now().strftime("%Y-%m-%d")))
-    attendance_record = cursor.fetchone()
-    if attendance_record is None:
-        compare_in_time_hour = datetime.now().hour
-        compare_in_time_min = datetime.now().minute
-        if compare_in_time_hour <= 9 and compare_in_time_min <= 30:
-            status = "Present"
-        elif (compare_in_time_hour >= 9 and compare_in_time_min >= 30) and (compare_in_time_hour <=10 and compare_in_time_min <= 0):
-            status = "Late"
-        elif (compare_in_time_hour >= 10 and compare_in_time_min >= 0) and (compare_in_time_hour <= 13 and compare_in_time_min <= 0):
-            status = "Half Day"
-        else:
-            status = "Absent"
-        cursor.execute("""
-            INSERT IGNORE INTO attendance (email, attendance_date, status, check_in_time)
-            VALUES (%s, %s, %s, %s)""", (email, date.today(), status, datetime.now().strftime("%H:%M:%S")))
-    sql.commit()
+    login_time_check(email)
     return redirect("/dashboard_page")
 
 
@@ -872,104 +893,322 @@ def add_weekly_off():
     sql.commit()
     return render_template("/add_weekly_off.html", data="Weekly off updated successfully")
 
+@app.route("/download_report_self")
+def download_report_self():
+    email = session.get("email")
+    name = session.get("user_name")
+    surname = session.get("surname")
+    department = session.get("department")
+    join_date = session.get("join_date")
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Monthly Report"
+
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 22
+
+    row = 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+    cell = ws.cell(row=row, column=1)
+    cell.value = f"{name} {surname} | {email} | {department} | Joined: {join_date}"
+    style_cell(cell, EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["EMPOLYEE_NAME"], EXCEL_STYLE["CENTER"])
+    row += 2
+    cursor.execute("""
+        SELECT Sick_Leave, Casual_Leave, Conpenstaion_off, Summer_Vacation
+        FROM leave_remaining WHERE email = %s
+    """, (email,))
+    sl, cl, coff, sv = cursor.fetchone()
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+    cell = ws.cell(row=row, column=1)
+    cell.value = "Leave Balance Remaining"
+    style_cell(cell, EXCEL_STYLE["SUB_FONT"], EXCEL_STYLE["LEAVE_REMAIN"], EXCEL_STYLE["CENTER"])
+    row += 1
+    headers = ["Sick Leave", "Casual Leave", "Comp Off", "Summer Vacation"]
+    values = [sl, cl, coff, sv]
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=c)
+        cell.value = h
+        style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    row += 1
+    for c, v in enumerate(values, 1):
+        cell = ws.cell(row=row, column=c)
+        cell.value = v
+        style_cell(cell, None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    row += 2
+    
+    cursor.execute("""
+        SELECT leave_type, leave_date_start, leave_date_end, applyed_on, approve
+        FROM leave_record
+        WHERE email = %s and applyed_on > %s
+        ORDER BY applyed_on DESC
+    """,(email, (datetime.now() - timedelta(days=30))))
+    leave_applied = cursor.fetchall()
+    
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+    cell = ws.cell(row=row, column=1)
+    cell.value = "Leave Applied (Last 30 Days)"
+    style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LEAVE_APPLIED"], EXCEL_STYLE["CENTER"])
+    row += 1
+    
+    headers = ["Leave Type", "Start Date", "End Date", "Applied On", "Status"]
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=c)
+        cell.value = h
+        style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    row += 1
+    
+    for leavetype, start, end, applied, stat in leave_applied:
+        ws.cell(row=row, column=1).value = leavetype
+        ws.cell(row=row, column=2).value = start
+        ws.cell(row=row, column=3).value = end
+        ws.cell(row=row, column=4).value = applied
+        ws.cell(row=row, column=5).value = stat
+        for c in range(1, 6):
+            style_cell(ws.cell(row=row, column=c), None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        row += 1
+    row += 1
+    
+    cursor.execute("""
+        SELECT attendance_date, status, check_in_time
+        FROM attendance
+        WHERE email = %s AND attendance_date >= %s
+    """, (email, (datetime.now() - timedelta(days=30)).date()))
+    attendance = cursor.fetchall()
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    cell = ws.cell(row=row, column=1)
+    cell.value = "Attendance (Last 30 Days)"
+    style_cell(cell, EXCEL_STYLE["SUB_FONT"], EXCEL_STYLE["ATTENDANCE"], EXCEL_STYLE["CENTER"])
+    row += 1
+    headers = ["Date", "Status", "Check-in"]
+    for c, h in enumerate(headers, 1):
+        cell = ws.cell(row=row, column=c)
+        cell.value = h
+        style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    row += 1
+    
+    status_count = {
+        "Present": 0, "Absent": 0, "Late": 0,
+        "Half Day": 0, "Weekly Off": 0, "Duty Leave": 0
+    }
+    for d, s, t in attendance:
+        ws.cell(row=row, column=1).value = d
+        ws.cell(row=row, column=2).value = s
+        ws.cell(row=row, column=3).value = t
+        for c in range(1, 4):
+            style_cell(ws.cell(row=row, column=c), None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        if s in status_count:
+            status_count[s] += 1
+        row += 1
+    row += 1
+    
+    ws.cell(row=row, column=1, value="Status")
+    ws.cell(row=row, column=2, value="Count")
+    
+    style_cell(ws.cell(row, 1), EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["ATTENDANCE_SUMMARY"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    style_cell(ws.cell(row, 2), EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["ATTENDANCE_SUMMARY"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+    
+    row += 1
+    chart_data_start = row
+    
+    for status, count in status_count.items():
+        ws.cell(row=row, column=1, value=status)
+        ws.cell(row=row, column=2, value=count)
+        style_cell(ws.cell(row, 1), EXCEL_STYLE["OTHER_FONT"], None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        style_cell(ws.cell(row, 2), EXCEL_STYLE["OTHER_FONT"], None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        row += 1
+    
+    chart_data_end = row - 1
+    chart = PieChart()
+    chart.title = "Attendance Chart"
+    labels = Reference(ws, min_col=1, min_row=chart_data_start, max_row=chart_data_end)
+    values = Reference(ws, min_col=2, min_row=chart_data_start, max_row=chart_data_end)
+    chart.add_data(values)
+    chart.set_categories(labels)
+    
+    ws.add_chart(chart, f"E{chart_data_start - 4}")
+    
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(temp.name)
+
+    return send_file(
+        temp.name,
+        as_attachment=True,
+        download_name=f"All_Employee_Monthly_Report_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    )
+
 @app.route("/download_all_reports")
 def download_all_reports():
-    output = StringIO()
-    if session.get("type") == 'admin':
-        cursor.execute("SELECT email, name, surname, department, join_date FROM employee")
-        employees = cursor.fetchall()
 
+    if session.get("type") != "admin":
+        return "Unauthorized"
+
+    cursor.execute("SELECT email, name, surname, department, join_date FROM employee")
+    employees = cursor.fetchall()
     if not employees:
         return "No employees found"
 
-    for emp in employees:
-        email = emp[0]
-        name = emp[1]
-        surname = emp[2]
-        department = emp[3]
-        join_date = emp[4]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Monthly Report"
 
-        output.write("\n=============================\n")
-        output.write(f"EMPLOYEE: {email} - {name} {surname}\n")
-        output.write("=============================\n\n")
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 20
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 22
+
+    row = 1
+
+    for email, name, surname, department, join_date in employees:
+
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        cell = ws.cell(row=row, column=1)
+        cell.value = f"{name} {surname} | {email} | {department} | Joined: {join_date}"
+        style_cell(cell, EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["EMPOLYEE_NAME"], EXCEL_STYLE["CENTER"])
+        row += 2
 
         cursor.execute("""
             SELECT Sick_Leave, Casual_Leave, Conpenstaion_off, Summer_Vacation
-            FROM leave_remaining
-            WHERE email = %s
+            FROM leave_remaining WHERE email = %s
         """, (email,))
-        remain = cursor.fetchone()
+        sl, cl, coff, sv = cursor.fetchone()
 
-        df_remain = pd.DataFrame([{
-            "Email": email,
-            "Name": name,
-            "Surname": surname,
-            "Department": department,
-            "Join Date": join_date,
-            "Sick_Leave Remaining": remain[0],
-            "Casual_Leave Remaining": remain[1],
-            "Conpenstaion_off Remaining": remain[2],
-            "Summer_Vacation Remaining": remain[3],
-        }])
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+        cell = ws.cell(row=row, column=1)
+        cell.value = "Leave Balance Remaining"
+        style_cell(cell, EXCEL_STYLE["SUB_FONT"], EXCEL_STYLE["LEAVE_REMAIN"], EXCEL_STYLE["CENTER"])
+        row += 1
 
-        output.write("=== Leave Remaining ===\n")
-        df_remain.to_csv(output, index=False)
-        output.write("\n")
+        headers = ["Sick Leave", "Casual Leave", "Comp Off", "Summer Vacation"]
+        values = [sl, cl, coff, sv]
 
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=c)
+            cell.value = h
+            style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+
+        row += 1
+
+        for c, v in enumerate(values, 1):
+            cell = ws.cell(row=row, column=c)
+            cell.value = v
+            style_cell(cell, None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        row += 2
+        
         cursor.execute("""
             SELECT leave_type, leave_date_start, leave_date_end, applyed_on, approve
             FROM leave_record
-            WHERE email = %s
-            ORDER BY leave_date_start DESC
-        """, (email,))
-        history = cursor.fetchall()
+            WHERE email = %s and applyed_on > %s
+            ORDER BY applyed_on DESC
+        """,(email, (datetime.now() - timedelta(days=30))))
+        leave_applied = cursor.fetchall()
+        
 
-        last_30_days = datetime.now() - timedelta(days=30)
-
-        recent_records = []
-
-        for row in history:
-            if row[3] >= last_30_days:
-                recent_records.append(row)
-        if recent_records:
-            df_history = pd.DataFrame(recent_records, columns=[
-                "Leave Type", "Leave Start Date", "Leave End Date", "Applied On", "Approval Status"
-            ])
-
-            output.write("=== Leave History (Last 30 Days) ===\n")
-            df_history.to_csv(output, index=False)
-            output.write("\n")
-        else:
-            output.write("No leave records in the last 30 days.\n\n")
-
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        cell = ws.cell(row=row, column=1)
+        cell.value = "Leave Applied (Last 30 Days)"
+        style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LEAVE_APPLIED"], EXCEL_STYLE["CENTER"])
+        row += 1
+        
+        headers = ["Leave Type", "Start Date", "End Date", "Applied On", "Status"]
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=c)
+            cell.value = h
+            style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        row += 1
+        
+        for leavetype, start, end, applied, stat in leave_applied:
+            ws.cell(row=row, column=1).value = leavetype
+            ws.cell(row=row, column=2).value = start
+            ws.cell(row=row, column=3).value = end
+            ws.cell(row=row, column=4).value = applied
+            ws.cell(row=row, column=5).value = stat
+            for c in range(1, 6):
+                style_cell(ws.cell(row=row, column=c), None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+            row += 1
+        row += 1
+        
         cursor.execute("""
-            SELECT * FROM attendance
-            WHERE email = %s
-            ORDER BY attendance_date DESC
-        """, (email,))
+            SELECT attendance_date, status, check_in_time
+            FROM attendance
+            WHERE email = %s AND attendance_date >= %s
+        """, (email, (datetime.now() - timedelta(days=30)).date()))
         attendance = cursor.fetchall()
-        
-        last_30_days_date = (datetime.now() - timedelta(days=30)).date()
-        attendance_records = []
-        
-        for row in attendance:
-            if row[1] >= last_30_days_date:
-                attendance_records.append(row)
-        if attendance_records:
-            df_attendance = pd.DataFrame(attendance_records, columns=[
-                "Email", "Attendance Date", "Status", "Check-in Time"
-            ])
 
-            output.write("=== Attendance Records (Last 30 Days) ===\n")
-            df_attendance.to_csv(output, index=False)
-            output.write("\n")
-        
-    csv_text = output.getvalue()
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+        cell = ws.cell(row=row, column=1)
+        cell.value = "Attendance (Last 30 Days)"
+        style_cell(cell, EXCEL_STYLE["SUB_FONT"], EXCEL_STYLE["ATTENDANCE"], EXCEL_STYLE["CENTER"])
+        row += 1
 
-    return Response(
-        csv_text,
-        mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=All_Employee_Monthly_Report.csv"}
+        headers = ["Date", "Status", "Check-in"]
+        for c, h in enumerate(headers, 1):
+            cell = ws.cell(row=row, column=c)
+            cell.value = h
+            style_cell(cell, EXCEL_STYLE["OTHER_FONT"], EXCEL_STYLE["LIGHT_FILL"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        row += 1
+        
+        status_count = {
+            "Present": 0, "Absent": 0, "Late": 0,
+            "Half Day": 0, "Weekly Off": 0, "Duty Leave": 0
+        }
+
+        for d, s, t in attendance:
+            ws.cell(row=row, column=1).value = d
+            ws.cell(row=row, column=2).value = s
+            ws.cell(row=row, column=3).value = t
+
+            for c in range(1, 4):
+                style_cell(ws.cell(row=row, column=c), None, None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+
+            if s in status_count:
+                status_count[s] += 1
+            row += 1
+        row += 1
+        
+        ws.cell(row=row, column=1, value="Status")
+        ws.cell(row=row, column=2, value="Count")
+        
+        style_cell(ws.cell(row, 1), EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["ATTENDANCE_SUMMARY"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        style_cell(ws.cell(row, 2), EXCEL_STYLE["HEADER_FONT"], EXCEL_STYLE["ATTENDANCE_SUMMARY"], EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+        
+        row += 1
+        chart_data_start = row
+        
+        for status, count in status_count.items():
+            ws.cell(row=row, column=1, value=status)
+            ws.cell(row=row, column=2, value=count)
+            style_cell(ws.cell(row, 1), EXCEL_STYLE["OTHER_FONT"], None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+            style_cell(ws.cell(row, 2), EXCEL_STYLE["OTHER_FONT"], None, EXCEL_STYLE["CENTER"], EXCEL_STYLE["BORDER"])
+            row += 1
+        
+        chart_data_end = row - 1
+
+        chart = PieChart()
+        chart.title = "Attendance Chart"
+
+        labels = Reference(ws, min_col=1, min_row=chart_data_start, max_row=chart_data_end)
+        values = Reference(ws, min_col=2, min_row=chart_data_start, max_row=chart_data_end)
+
+        chart.add_data(values)
+        chart.set_categories(labels)
+        
+        ws.add_chart(chart, f"E{chart_data_start - 4}")
+
+
+        row += 5
+
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    wb.save(temp.name)
+
+    return send_file(
+        temp.name,
+        as_attachment=True,
+        download_name=f"All_Employee_Monthly_Report_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
     )
 
 
